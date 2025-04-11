@@ -1,29 +1,30 @@
-import React, { createContext, useState, useEffect } from "react";
+import React, { createContext, useState, useEffect, useCallback } from "react";
 import axios from "axios";
 
-//context
+// Create context
 const PostContext = createContext();
 
 const PostProvider = ({ children }) => {
-  //state
   const [loading, setLoading] = useState(false);
   const [post, setPost] = useState([]);
-  //getall post
-  const getAllPost = async () => {
+
+  // ✅ Memoize getAllPost to prevent infinite re-renders
+  const getAllPost = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await axios.get("/post/get-all-post");
-      setLoading(false);
-      setPost(data?.post);
+      setPost(data?.post || []);
     } catch (error) {
-      console.log(error);
+      console.error("getAllPost error:", error);
+    } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
+  // Fetch posts once on mount
   useEffect(() => {
     getAllPost();
-  }, []);
+  }, [getAllPost]);
 
   return (
     <PostContext.Provider value={[post, setPost, getAllPost]}>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   Alert,
   Modal,
@@ -12,35 +12,58 @@ import { SafeAreaView, SafeAreaProvider } from "react-native-safe-area-context";
 import axios from "axios";
 import { useNavigation } from "@react-navigation/native";
 
-const EditModal = ({ modalVisible, setModalVisible, post }) => {
+// 👇 Move this outside the component to avoid re-creation
+let cachedPosts = null;
+
+const EditModal = React.memo(({ modalVisible, setModalVisible, post }) => {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
   const navigation = useNavigation();
 
-  //handle update post
-  const updatePostHandler = async (id) => {
-    try {
-      setLoading(true);
-      const { data } = await axios.put(`/post/update-post/${id}`, {
-        title,
-        description,
-      });
-      setLoading(false);
-      alert(data?.message);
-      navigation.push("MyPost");
-    } catch (error) {
-      setLoading(false);
-      console.log(error);
-      alert(error);
-    }
-  };
-
-  //initial post data
+  // Set post values when modal opens
   useEffect(() => {
-    setTitle(post?.title);
-    setDescription(post?.description);
-  }, [post]);
+    if (modalVisible && post) {
+      setTitle(post.title || "");
+      setDescription(post.description || "");
+    }
+  }, [modalVisible, post]);
+
+  const updatePostHandler = useCallback(
+    async (id) => {
+      try {
+        setLoading(true);
+        const { data } = await axios.put(`/post/update-post/${id}`, {
+          title,
+          description,
+        });
+        alert(data?.message);
+        cachedPosts = null; // ❌ invalidate cache
+
+        // ✅ Navigate and close modal safely after delay
+        navigation.push("MyPost");
+        setTimeout(() => {
+          setModalVisible(false);
+          setLoading(false);
+        }, 300);
+      } catch (error) {
+        setLoading(false);
+        console.error(error);
+        alert("Failed to update post");
+      }
+    },
+    [title, description, navigation, setModalVisible]
+  );
+
+  const handleCancel = useCallback(() => {
+    setModalVisible(false);
+  }, [setModalVisible]);
+
+  const handleCloseRequest = useCallback(() => {
+    Alert.alert("Modal has been closed.");
+    setModalVisible(false);
+  }, [setModalVisible]);
+
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.centeredView}>
@@ -48,48 +71,41 @@ const EditModal = ({ modalVisible, setModalVisible, post }) => {
           animationType="slide"
           transparent={true}
           visible={modalVisible}
-          onRequestClose={() => {
-            Alert.alert("Modal has been closed.");
-            setModalVisible(!modalVisible);
-          }}
+          onRequestClose={handleCloseRequest}
         >
           <View style={styles.centeredView}>
             <View style={styles.modalView}>
-              {/* <Text>{JSON.stringify(post, null, 4)}</Text> */}
               <Text style={styles.modalText}>Update Your Post</Text>
+
               <Text>Title</Text>
               <TextInput
                 style={styles.inputBox}
                 value={title}
-                onChangeText={(text) => {
-                  setTitle(text);
-                }}
+                onChangeText={setTitle}
               />
+
               <Text>Description</Text>
               <TextInput
                 style={styles.inputBox}
                 multiline={true}
                 numberOfLines={4}
                 value={description}
-                onChangeText={(text) => {
-                  setDescription(text);
-                }}
+                onChangeText={setDescription}
               />
+
               <View style={styles.btnContainer}>
                 <Pressable
                   style={styles.button}
-                  onPress={() => {
-                    setModalVisible(!modalVisible),
-                      updatePostHandler(post && post._id);
-                  }}
+                  onPress={() => updatePostHandler(post?._id)}
+                  disabled={loading}
                 >
                   <Text style={styles.textStyle}>
-                    {loading ? "Please wait" : "Update"}
+                    {loading ? "Please wait..." : "Update"}
                   </Text>
                 </Pressable>
                 <Pressable
                   style={[styles.button, styles.buttonClose]}
-                  onPress={() => setModalVisible(!modalVisible)}
+                  onPress={handleCancel}
                 >
                   <Text style={styles.textStyle}>Cancel</Text>
                 </Pressable>
@@ -100,7 +116,7 @@ const EditModal = ({ modalVisible, setModalVisible, post }) => {
       </SafeAreaView>
     </SafeAreaProvider>
   );
-};
+});
 
 const styles = StyleSheet.create({
   centeredView: {
@@ -113,12 +129,8 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderRadius: 10,
     padding: 35,
-    // alignItems: "center",
     shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
@@ -141,9 +153,6 @@ const styles = StyleSheet.create({
     width: 100,
     margin: 10,
   },
-  //   buttonOpen: {
-  //     backgroundColor: "#F194FF",
-  //   },
   buttonClose: {
     backgroundColor: "red",
   },

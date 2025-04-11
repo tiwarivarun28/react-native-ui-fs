@@ -1,39 +1,54 @@
-import { View, StyleSheet, ScrollView, Text } from "react-native";
-import React, { useState, useEffect } from "react";
+import { View, StyleSheet, ScrollView } from "react-native";
+import React, { useState, useCallback, useMemo } from "react";
 import PostCard from "../components/postCard";
 import FooterMenu from "../components/Menus/FooterMenu";
 import axios from "axios";
+import { useFocusEffect } from "@react-navigation/native";
+import isEqual from "lodash.isequal"; // install with: npm i lodash.isequal
+
+let cachedPosts = null;
 
 const MyPost = () => {
-  //local state
-  const [posts, setPosts] = useState([]);
+  const [posts, setPosts] = useState(cachedPosts || []);
   const [loading, setLoading] = useState(false);
-  ///get user post
-  const getUserPosts = async () => {
-    try {
-      setLoading(true);
-      const { data } = await axios.get("/post/get-user-post");
-      setLoading(false);
-      setPosts(data?.userPosts);
-    } catch (error) {
-      setLoading(false);
-      alert(error);
-      console.log(error);
-    }
-  };
 
-  useEffect(() => {
-    getUserPosts();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+
+      if (cachedPosts && isActive) {
+        setPosts(cachedPosts);
+      }
+
+      // run in background
+      (async () => {
+        try {
+          const { data } = await axios.get("/post/get-user-post");
+          const fetchedPosts = data?.userPosts || [];
+
+          if (!isEqual(fetchedPosts, cachedPosts) && isActive) {
+            cachedPosts = fetchedPosts;
+            setPosts(fetchedPosts);
+          }
+        } catch (err) {
+          console.error("getUserPosts error:", err);
+        }
+      })();
+
+      return () => {
+        isActive = false;
+      };
+    }, []) // 👈 NO dependencies
+  );
+
+  const renderedPostCard = useMemo(() => {
+    return <PostCard posts={posts} myPostScreen />;
+  }, [posts]);
 
   return (
     <View style={styles.container}>
-      <ScrollView>
-        <PostCard posts={posts} myPostScreen={true} />
-      </ScrollView>
-      <View>
-        <FooterMenu />
-      </View>
+      <ScrollView>{renderedPostCard}</ScrollView>
+      <FooterMenu />
     </View>
   );
 };
@@ -46,4 +61,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default MyPost;
+export default React.memo(MyPost);
